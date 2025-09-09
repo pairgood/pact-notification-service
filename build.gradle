@@ -58,7 +58,7 @@ pact {
     }
     
     serviceProviders {
-        'pactmart-notifications' {
+        'notifications' {
             protocol = 'http'
             host = 'localhost'
             port = 8080
