@@ -3,6 +3,7 @@ plugins {
     id 'org.springframework.boot' version '3.1.5'
     id 'io.spring.dependency-management' version '1.1.3'
     id 'jacoco'
+    id 'au.com.dius.pact' version '4.6.2'
 }
 
 group = 'com.pactmart'
@@ -24,6 +25,9 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-webflux'
     runtimeOnly 'com.h2database:h2'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'au.com.dius.pact.consumer:junit5:4.6.2'
+    testImplementation 'au.com.dius.pact.provider:junit5:4.6.2'
+    testImplementation 'au.com.dius.pact.provider:junit5spring:4.6.2'
 }
 
 tasks.named('test') {
@@ -43,4 +47,28 @@ jacocoTestReport {
 
 jacoco {
     toolVersion = "0.8.11"
+}
+
+pact {
+    publish {
+        pactBrokerUrl = System.getenv('PACT_BROKER_BASE_URL') ?: 'https://demo-83121b73.pactflow.io'
+        pactBrokerToken = System.getenv('PACT_BROKER_TOKEN')
+        consumerVersion = System.getenv('PACT_VERSION') ?: System.getenv('GITHUB_SHA') ?: 'dev'
+        tags = [System.getenv('PACT_BRANCH') ?: System.getenv('GITHUB_REF_NAME') ?: 'main']
+    }
+    
+    serviceProviders {
+        'pactmart-notifications' {
+            protocol = 'http'
+            host = 'localhost'
+            port = 8080
+            path = '/'
+            
+            hasPactsFromPactBroker {
+                pactBrokerUrl = System.getenv('PACT_BROKER_BASE_URL') ?: 'https://demo-83121b73.pactflow.io'
+                pactBrokerToken = System.getenv('PACT_BROKER_TOKEN')
+                selectors = latestTags('main', 'test')
+            }
+        }
+    }
 }

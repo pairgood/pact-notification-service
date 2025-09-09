@@ -1,0 +1,97 @@
+name: PactMart Contract Testing
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  repository_dispatch:
+    types: [pact_verification]
+
+env:
+  PACT_BROKER_BASE_URL: ${{ secrets.PACT_BROKER_BASE_URL }}
+  PACT_BROKER_TOKEN: ${{ secrets.PACT_BROKER_TOKEN }}
+  APPLICATION_NAME: PactMart
+
+jobs:
+  pact-testing:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        
+      - name: Run Consumer Contract Tests
+        run: ./gradlew test --tests "*Consumer*"
+        
+      - name: Publish Consumer Pacts to Test Environment (PR/Feature Branch)
+        if: github.event_name == 'pull_request'
+        run: ./gradlew pactPublish
+        env:
+          PACT_BROKER_ENVIRONMENT: test
+          PACT_VERSION: ${{ github.head_ref }}-${{ github.sha }}
+          PACT_BRANCH: ${{ github.head_ref }}
+        
+      - name: Publish Consumer Pacts to Production Environment (Main Branch)
+        if: github.ref == 'refs/heads/main'
+        run: ./gradlew pactPublish
+        env:
+          PACT_BROKER_ENVIRONMENT: production
+          PACT_VERSION: ${{ github.sha }}
+          PACT_BRANCH: main
+        
+      - name: Verify Provider Contracts
+        run: ./gradlew pactVerify
+        
+      - name: Can I Deploy Check (Production Only)
+        if: github.ref == 'refs/heads/main'
+        uses: pactfoundation/pact-cli-action@v1.0.0
+        with:
+          broker-base-url: ${{ secrets.PACT_BROKER_BASE_URL }}
+          broker-token: ${{ secrets.PACT_BROKER_TOKEN }}
+          command: can-i-deploy
+          pacticipant: ${{ github.event.repository.name }}
+          version: ${{ github.sha }}
+          to-environment: production
+          
+      - name: Record Deployment (Production Only)
+        if: success() && github.ref == 'refs/heads/main'
+        uses: pactfoundation/pact-cli-action@v1.0.0
+        with:
+          broker-base-url: ${{ secrets.PACT_BROKER_BASE_URL }}
+          broker-token: ${{ secrets.PACT_BROKER_TOKEN }}
+          command: record-deployment
+          pacticipant: ${{ github.event.repository.name }}
+          version: ${{ github.sha }}
+          environment: production
+
+  # Separate job for webhook-triggered provider verification
+  webhook-verification:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'repository_dispatch'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        
+      - name: Verify Provider Contracts (Webhook Trigger)
+        run: ./gradlew pactVerify
+        env:
+          PACT_BROKER_BASE_URL: ${{ secrets.PACT_BROKER_BASE_URL }}
+          PACT_BROKER_TOKEN: ${{ secrets.PACT_BROKER_TOKEN }}

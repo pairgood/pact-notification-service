@@ -1,5 +1,7 @@
 package com.ecommerce.notificationservice.service;
 
+import com.ecommerce.notificationservice.client.UserServiceClient;
+import com.ecommerce.notificationservice.dto.UserResponse;
 import com.ecommerce.notificationservice.model.Notification;
 import com.ecommerce.notificationservice.repository.NotificationRepository;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,6 +18,9 @@ public class NotificationService {
     
     @Autowired
     private EmailService emailService;
+    
+    @Autowired
+    private UserServiceClient userServiceClient;
     
     public Notification sendOrderConfirmation(Long orderId, Long userId) {
         String subject = "Order Confirmation - Order #" + orderId;
@@ -121,6 +126,16 @@ public class NotificationService {
     }
     
     private Notification processNotification(Notification notification) {
+        try {
+            // Fetch user details for personalization and email address
+            UserResponse user = userServiceClient.getUserById(notification.getUserId());
+            notification.setRecipientEmail(user.getEmail());
+            notification.setRecipientPhone(user.getPhoneNumber());
+        } catch (Exception e) {
+            System.err.println("Failed to fetch user details: " + e.getMessage());
+            // Continue with notification processing even if user details fetch fails
+        }
+        
         // Save notification to database
         notification = notificationRepository.save(notification);
         
