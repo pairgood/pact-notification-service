@@ -2,10 +2,186 @@
 
 > **🟣 This service is highlighted in the architecture diagram below**
 
-Email and SMS notification service for the e-commerce microservices ecosystem.
+Email and SMS notification service for the PactMart e-commerce microservices ecosystem.
 
-## Service Role: Consumer Only
-This service consumes events from Order and Payment services to send notifications but does not produce data for other services.
+## PactMart Contract Testing
+
+This service implements comprehensive Pact contract testing as part of the **PactMart e-commerce platform**. Contract testing ensures reliable integration between PactMart services while enabling independent development and deployment.
+
+### What is Pact in PactMart Context?
+
+Pact is a consumer-driven contract testing framework that:
+- **Prevents Breaking Changes**: Ensures PactMart services don't break each other when deploying new versions
+- **Enables Independent Development**: Teams can work on different PactMart services without coordination overhead
+- **Provides Fast Feedback**: Contract tests run in seconds vs. hours for full integration tests
+- **Documents Service Interactions**: Contracts serve as living documentation of PactMart service integrations
+
+### How Pact Works in PactMart
+
+1. **Consumer Tests**: Services that call other PactMart services create contract tests defining expected requests/responses
+2. **Contract Generation**: These tests generate JSON contracts stored in PactFlow broker
+3. **Provider Verification**: Services verify they satisfy all contracts from consuming PactMart services
+4. **Deployment Safety**: "Can I deploy?" checks prevent incompatible versions from reaching production
+
+### PactMart Service Roles
+
+**Notification Service as Consumer**:
+- Calls User Service to fetch user contact information (email, phone)
+- Validates response fields actually used in notification processing
+
+**Notification Service as Provider**:
+- Provides notification endpoints for other PactMart services (orders, payments)
+- Verifies contracts from consuming PactMart services
+
+### Feature Branch Workflow with Pact
+
+Our PactMart implementation uses environment-specific contract publishing:
+
+- **Feature Branches/PRs** → Publish contracts to **test** environment in PactFlow
+- **Main Branch** → Publish contracts to **production** environment in PactFlow
+- **Environment Isolation** → Development work doesn't break production contracts
+- **Deployment Checks** → "Can I deploy?" validates production readiness
+
+### Contract Testing Philosophy
+
+**Strict on Send, Liberal on Receive**:
+- **Consumer Tests**: Validate all fields sent to external PactMart services
+- **Response Validation**: Only validate fields actually used in business logic
+- **Correlation Comments**: Every validated response field links to production code usage
+
+### Running PactMart Contract Tests
+
+```bash
+# Run consumer contract tests (as notification service calling other services)
+./gradlew test --tests "*Consumer*"
+
+# Run provider contract tests (verifying notification service API)
+./gradlew pactVerify
+
+# Publish contracts to PactFlow broker
+./gradlew pactPublish
+```
+
+### Contract Test Structure
+
+```
+src/test/java/com/ecommerce/notificationservice/contracts/
+├── consumer/
+│   └── UsersConsumerTest.java         # Tests calling User Service
+└── provider/
+    └── NotificationsProviderTest.java # Tests notification API
+```
+
+### Environment-Aware Publishing
+
+**Feature Branch Development**:
+```bash
+# Automatically runs on PRs
+PACT_BROKER_ENVIRONMENT=test ./gradlew pactPublish
+```
+
+**Production Deployment**:
+```bash
+# Automatically runs on main branch
+PACT_BROKER_ENVIRONMENT=production ./gradlew pactPublish
+```
+
+### PactMart Service Naming Conventions
+
+- **Application Name**: `PactMart` (in PactFlow)
+- **Service Names**: Use pattern `pactmart-{service}` (e.g., `pactmart-notifications`)
+- **Consumer/Provider Names**: Use service name without prefix (e.g., `notifications`, `users`)
+
+### Updating PactMart Contract Tests
+
+**When to Update Consumer Tests**:
+- Adding new calls to external PactMart services
+- Changing request parameters sent to other services
+- Starting to use new fields from service responses
+
+**When to Update Provider Tests**:
+- Adding new notification API endpoints
+- Changing notification request/response structure
+- Modifying notification processing logic
+
+**Handling Breaking Changes**:
+1. Update provider implementation first
+2. Verify all consumer contracts still pass
+3. Update consumer contracts if needed
+4. Deploy provider, then consumers
+
+### CI/CD Integration
+
+Our GitHub Actions pipeline handles:
+- **Automated Testing**: Runs contract tests on every PR
+- **Environment Publishing**: Test environment for PRs, production for main
+- **Webhook Verification**: PactFlow triggers verification when contracts change
+- **Deployment Safety**: Blocks production deployment if contracts incompatible
+
+### PactFlow Integration
+
+All contracts are published to PactFlow under the **PactMart** application with:
+- **Environment Tagging**: Separate test/production contract versions
+- **Webhook Triggers**: Automatic provider verification when contracts change
+- **Deployment Records**: Track which versions are deployed to which environments
+- **Can I Deploy**: Safety checks before production deployment
+
+### Example Contract Tests
+
+**Consumer Test** (Notification service calling User service):
+```java
+@Pact(consumer = "notifications")
+public V4Pact getUserByIdPact(PactDslWithProvider builder) {
+    return builder
+        .given("user with id 1 exists")
+        .uponReceiving("a request to get user by id")
+        .path("/api/users/1")
+        .method("GET")
+        .willRespondWith()
+        .status(200)
+        .body(LambdaDsl.newJsonBody(body -> body
+            .numberType("id")         // Used in NotificationService.java
+            .stringType("email")      // Used for recipient email
+            .stringType("phoneNumber") // Used for SMS notifications
+        ).build());
+}
+```
+
+**Provider Test** (Notification service API verification):
+```java
+@Provider("notifications")
+@PactBroker
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+class NotificationsProviderTest {
+    
+    @State("valid order confirmation request")
+    void setupValidOrderConfirmation() {
+        // Setup test data for contract verification
+    }
+}
+```
+
+### Debugging Failed Contracts
+
+1. **Check PactFlow**: View contract details and verification results
+2. **Run Tests Locally**: `./gradlew test --tests "*Consumer*" --info`
+3. **Verify Provider**: `./gradlew pactVerify --info`
+4. **Check State Setup**: Ensure provider states match consumer expectations
+
+### Manual Testing Integration
+
+After implementing contract tests:
+1. **Review Generated Contracts**: Check PactFlow for published contracts
+2. **Verify Integration**: Confirm notification service works with real PactMart services
+3. **Test Error Scenarios**: Validate graceful handling of service failures
+
+---
+
+## Service Role: Provider and Consumer
+## Service Role: Provider and Consumer
+This service acts as both:
+- **Provider**: Offers notification endpoints consumed by Order and Payment services
+- **Consumer**: Calls User Service to fetch contact information for personalized notifications
 
 ## Architecture Overview
 
